@@ -2,6 +2,7 @@ Release/
 Packages/
 TempOutput/
 testExtract/
+artifacts/
 bin
 obj
 x64/
