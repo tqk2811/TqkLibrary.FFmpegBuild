@@ -14,7 +14,7 @@ namespace AutoPackager
         static async Task Main(string[] args)
         {
             string rootDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-            string artifactsDir = Path.Combine(rootDir, "FFmpegBuildSubmodule", "FFmpeg-Builds", "artifacts");
+            string artifactsDir = Path.Combine(rootDir, "artifacts");
             string packagesDir = Path.Combine(rootDir, "Packages");
             string tempDir = Path.Combine(rootDir, "TempOutput");
 
@@ -34,10 +34,11 @@ namespace AutoPackager
             }
 
             // Regex ex: ffmpeg-n4.4.6-86-g810c930d7a-win64-gpl-shared-4.4.zip
-            // group 1: 4.4.6
-            // group 2: 86
-            // group 3: win64
-            var regex = new Regex(@"ffmpeg-n([\d\.]+)-(\d+)-.*-(win32|win64|winarm64|linuxarm64|linux64|mac64)-gpl-shared-[^\s]+\.(zip|tar\.xz)", RegexOptions.IgnoreCase);
+            // group 1: 4.4.6   (base version)
+            // group 2: 86      (build number)
+            // group 3: win64   (arch)
+            // group 4: gpl     (license variant: gpl|lgpl|gpl2|lgpl2, longest match first)
+            var regex = new Regex(@"ffmpeg-n([\d\.]+)-(\d+)-.*-(win32|win64|winarm64|linuxarm64|linux64|mac64)-(lgpl3|lgpl2|lgpl|gpl3|gpl2|gpl)-shared-[^\s]+\.(zip|tar\.xz)", RegexOptions.IgnoreCase);
 
             string nativeNuspecTemplate = File.ReadAllText(Path.Combine(rootDir, "TqkLibrary.FFmpeg.Native.nuspec"));
             string toolsNuspecTemplate = File.ReadAllText(Path.Combine(rootDir, "TqkLibrary.FFmpeg.Tools.nuspec"));
@@ -81,9 +82,22 @@ namespace AutoPackager
                 string osName = winArch.StartsWith("win") ? "Win" : (winArch.StartsWith("linux") ? "Linux" : "Mac");
                 string osId = winArch.StartsWith("win") ? "win" : (winArch.StartsWith("linux") ? "linux" : "osx");
 
-                Console.WriteLine($"Processing Version: {version}, Arch: {arch}");
+                // License variant -> package-id segment + SPDX expression.
+                // BtbN default "gpl"/"lgpl" builds pass --enable-version3 => v3. "gpl2"/"lgpl2" are custom v2 builds.
+                // Note: FFmpeg's LGPL base is 2.1 (there is no LGPL-2.0), so "lgpl2" maps to LGPL-2.1-or-later.
+                string licenseVariant = match.Groups[4].Value.ToLowerInvariant();
+                (string licenseSegment, string licenseSpdx) = licenseVariant switch
+                {
+                    "gpl" or "gpl3" => ("Gpl3", "GPL-3.0-or-later"),
+                    "lgpl" or "lgpl3" => ("Lgpl3", "LGPL-3.0-or-later"),
+                    "gpl2" => ("Gpl2", "GPL-2.0-or-later"),
+                    "lgpl2" => ("Lgpl2", "LGPL-2.1-or-later"),
+                    _ => throw new Exception($"Unknown license variant {licenseVariant}")
+                };
 
-                string extractPath = Path.Combine(tempDir, $"{version}-{arch}");
+                Console.WriteLine($"Processing Version: {version}, Arch: {arch}, License: {licenseSegment}");
+
+                string extractPath = Path.Combine(tempDir, $"{version}-{arch}-{licenseSegment}");
                 if (Directory.Exists(extractPath))
                     Directory.Delete(extractPath, true);
 
@@ -139,24 +153,31 @@ namespace AutoPackager
                 
                 string relativeBaseDir = ".";
 
+                string idNative = $"TqkLibrary.FFmpeg.{licenseSegment}.Native.{osName}.{arch}";
+                string idTools = $"TqkLibrary.FFmpeg.{licenseSegment}.Tools.{osName}.{arch}";
+
                 // Native nuspec
                 string nativeNuspec = nativeNuspecTemplate
-                    .Replace("<id>TqkLibrary.FFmpeg.Native</id>", $"<id>TqkLibrary.FFmpeg.Native.{osName}.{arch}</id>")
+                    .Replace("<id>TqkLibrary.FFmpeg.Native</id>", $"<id>{idNative}</id>")
+                    .Replace("$idNative$", idNative)
                     .Replace("$version$", version)
                     .Replace("$osName$", osName)
                     .Replace("$os$", osId)
                     .Replace("$arch$", arch)
+                    .Replace("$license$", licenseSpdx)
                     .Replace("$basePath$", relativeBaseDir);
 
                 // Tools nuspec
                 string toolsNuspec = toolsNuspecTemplate
-                    .Replace("<id>TqkLibrary.FFmpeg.Tools</id>", $"<id>TqkLibrary.FFmpeg.Tools.{osName}.{arch}</id>")
-                    .Replace("<dependency id=\"TqkLibrary.FFmpeg.Native\"", $"<dependency id=\"TqkLibrary.FFmpeg.Native.{osName}.{arch}\"")
+                    .Replace("<id>TqkLibrary.FFmpeg.Tools</id>", $"<id>{idTools}</id>")
+                    .Replace("<dependency id=\"TqkLibrary.FFmpeg.Native\"", $"<dependency id=\"{idNative}\"")
+                    .Replace("$idTools$", idTools)
                     .Replace("[$version$,$version$]", $"[{version},{version}]")
                     .Replace("$version$", version)
                     .Replace("$osName$", osName)
                     .Replace("$os$", osId)
                     .Replace("$arch$", arch)
+                    .Replace("$license$", licenseSpdx)
                     .Replace("$path$", $@"{relativeBaseDir}\bin");
 
                 string nativeNuspecPath = Path.Combine(extractPath, "TqkLibrary.FFmpeg.Native.nuspec");
@@ -170,8 +191,6 @@ namespace AutoPackager
                 File.WriteAllText(Path.Combine(extractedBaseDir, "README.md"), readmeContent);
                 
                 // Write props and targets dynamically
-                string idNative = $"TqkLibrary.FFmpeg.Native.{osName}.{arch}";
-                string idTools = $"TqkLibrary.FFmpeg.Tools.{osName}.{arch}";
 
                 string platformCondition = (arch, osName) switch
                 {
