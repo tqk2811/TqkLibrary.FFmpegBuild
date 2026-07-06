@@ -3,6 +3,7 @@ Packages/
 TempOutput/
 testExtract/
 artifacts/
+artifacts-android/
 bin
 obj
 x64/
