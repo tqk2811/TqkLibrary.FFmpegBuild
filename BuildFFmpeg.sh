@@ -21,6 +21,10 @@ ARTIFACTS_DIR="./artifacts"
 CACHE_BASE_DIR="$BUILD_DIR/.cache/ghcr.io/btbn/ffmpeg-builds"
 mkdir -p "$ARTIFACTS_DIR"
 
+# Apply our tracked customizations (gpl2/lgpl2 variants + license/kernel/sdl2 fixes)
+# onto the pristine BtbN/FFmpeg-Builds submodule before building.
+"$(dirname "$0")/apply-overlay.sh"
+
 docker builder prune -f
 for VARIANT in $VARIANTS; do
     for VERSION in $VERSIONS; do

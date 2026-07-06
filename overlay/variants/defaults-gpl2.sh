@@ -1,0 +1,6 @@
+FF_CONFIGURE="--enable-gpl --disable-debug"
+FF_CFLAGS=""
+FF_CXXFLAGS=""
+FF_LDFLAGS=""
+GIT_BRANCH="master"
+LICENSE_FILE="COPYING.GPLv2"

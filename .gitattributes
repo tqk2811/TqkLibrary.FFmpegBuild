@@ -1,0 +1,4 @@
+# Shell scripts and Dockerfiles run on Linux (the build VM) — force LF so they are
+# not mangled with CRLF when checked out on Windows (which would break `#!/bin/sh`).
+*.sh text eol=lf
+Dockerfile text eol=lf
